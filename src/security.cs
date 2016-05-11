@@ -507,6 +507,11 @@ namespace XamCore.Security {
 
 		[Field ("kSecImportItemIdentity")]
 		NSString Identity { get; }
+
+#if MONOMAC
+		[Field ("kSecImportExportKeychain")]
+		NSString KeyChain { get; }
+#endif
 	}
 
 	[Static][Internal]

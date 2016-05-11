@@ -726,6 +726,136 @@ namespace XamCore.Security {
 
 			return null;
 		}
+
+#if XAMCORE_2_0 && MONOMAC
+		[DllImport (Constants.SecurityLibrary, CharSet = CharSet.Ansi)]
+		extern static SecStatusCode SecKeychainCreate (string path, int passwordLen, IntPtr password, bool promptUser, IntPtr initialAccess, out IntPtr keychain);
+
+		[DllImport (Constants.SecurityLibrary)]
+		extern static SecStatusCode SecKeychainDelete (IntPtr keychainOrArray);
+
+		[DllImport (Constants.SecurityLibrary, CharSet = CharSet.Ansi)]
+		extern static SecStatusCode SecKeychainOpen (string path, out IntPtr keychain);
+
+		[DllImport (Constants.SecurityLibrary, CharSet = CharSet.Ansi)]
+		extern static SecStatusCode SecKeychainUnlock (IntPtr keychain, int passwordLength, IntPtr password, bool usePassword);
+
+		[DllImport (Constants.SecurityLibrary)]
+		extern static SecStatusCode SecKeychainLock (IntPtr keychain);
+
+		[DllImport (Constants.SecurityLibrary)]
+		extern static SecStatusCode SecKeychainLockAll ();
+
+		[DllImport (Constants.SecurityLibrary)]
+		extern static SecStatusCode SecKeychainSetDefault (IntPtr keychain);
+
+		[DllImport (Constants.SecurityLibrary)]
+		extern static SecStatusCode SecKeychainCopyDefault (out IntPtr keychain);
+
+		[DllImport (Constants.SecurityLibrary)]
+		extern static SecStatusCode SecKeychainSetUserInteractionAllowed (bool state);
+
+		[DllImport (Constants.SecurityLibrary)]
+		extern static SecStatusCode SecKeychainGetUserInteractionAllowed ([MarshalAs (UnmanagedType.I1)] out bool state);
+
+		static SecStatusCode CreateKeyChain (string path, string password, out IntPtr keychain)
+		{
+			int passwordLen = 0;
+			IntPtr passwordPtr = IntPtr.Zero;
+
+			if (password != null) {
+				passwordLen = password.Length;
+				passwordPtr = Marshal.StringToHGlobalAnsi (password);
+			}
+
+			try {
+				return SecKeychainCreate (path, passwordLen, passwordPtr, false, IntPtr.Zero, out keychain);
+			} finally {
+				if (passwordPtr != IntPtr.Zero)
+					Marshal.FreeHGlobal (passwordPtr);
+			}
+		}
+
+		public static SecStatusCode Create (string path, string password, out SecKeyChain keychain)
+		{
+			IntPtr handle;
+			keychain = null;
+			var status = CreateKeyChain (path, password, out handle);
+			if (status == SecStatusCode.Success && handle != IntPtr.Zero)
+				keychain = new SecKeyChain (handle);
+			return status;
+		}
+
+		public static SecStatusCode Delete (SecKeyChain keychain)
+		{
+			return SecKeychainDelete (keychain.Handle);
+		}
+
+		public static SecStatusCode Open (string path, out SecKeyChain keychain)
+		{
+			IntPtr handle;
+			keychain = null;
+			var status = SecKeychainOpen (path, out handle);
+			if (status == SecStatusCode.Success && handle != IntPtr.Zero)
+				keychain = new SecKeyChain (handle);
+			return status;
+		}
+
+		public SecStatusCode Unlock (string password)
+		{
+			int passwordLen = 0;
+			IntPtr passwordPtr = IntPtr.Zero;
+
+			if (password != null) {
+				passwordLen = password.Length;
+				passwordPtr = Marshal.StringToHGlobalAnsi (password);
+			}
+
+			try {
+				return SecKeychainUnlock (Handle, passwordLen, passwordPtr, password != null);
+			} finally {
+				if (passwordPtr != IntPtr.Zero)
+					Marshal.FreeHGlobal (passwordPtr);
+			}
+		}
+
+		public SecStatusCode Lock ()
+		{
+			return SecKeychainLock (Handle);
+		}
+
+		public static SecStatusCode LockAdd ()
+		{
+			return SecKeychainLockAll ();
+		}
+
+		public static SecStatusCode SetDefault (SecKeyChain keychain)
+		{
+			var handle = keychain != null ? keychain.Handle : IntPtr.Zero;
+			return SecKeychainSetDefault (handle);
+		}
+
+		public static SecStatusCode GetDefault (out SecKeyChain keychain)
+		{
+			IntPtr handle;
+			var status = SecKeychainCopyDefault (out handle);
+			if (status == SecStatusCode.Success && handle != null)
+				keychain = new SecKeyChain (handle);
+			else
+				keychain = null;
+			return status;
+		}
+
+		public static SecStatusCode GetUserInteractionAllowed (out bool state)
+		{
+			return SecKeychainGetUserInteractionAllowed (out state);
+		}
+
+		public static SecStatusCode SetUserInteractionAllowed (bool state)
+		{
+			return SecKeychainSetUserInteractionAllowed (state);
+		}
+#endif
 	}
 	
 	public class SecRecord : IDisposable {

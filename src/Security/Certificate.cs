@@ -389,6 +389,29 @@ namespace XamCore.Security {
 			var pkcs12 = certificate.Export (X509ContentType.Pfx, password);
 			return Import (pkcs12, password);
 		}
+
+#if XAMCORE_2_0 && MONOMAC
+		public static SecIdentity Import (SecKeyChain keychain, byte[] data, string password)
+		{
+			if (data == null)
+				throw new ArgumentNullException ("data");
+			if (string.IsNullOrEmpty (password)) // SecPKCS12Import() doesn't allow empty passwords.
+				throw new ArgumentException ("password");
+			using (var pwstring = new NSString (password))
+			using (var options = new NSMutableDictionary ()) {
+				options.LowlevelSetObject (pwstring.Handle, SecImportExport.Passphrase.Handle);
+				if (keychain != null)
+					options.LowlevelSetObject (keychain.Handle, SecImportExport.KeyChain.Handle);
+				NSDictionary[] array;
+				SecStatusCode result = SecImportExport.ImportPkcs12 (data, options, out array);
+				if (result != SecStatusCode.Success)
+					throw new InvalidOperationException (result.ToString ());
+
+				return new SecIdentity (array [0].LowlevelObjectForKey (SecImportExport.Identity.Handle));
+			}
+		}
+
+#endif
 #endif
 
 		~SecIdentity ()
