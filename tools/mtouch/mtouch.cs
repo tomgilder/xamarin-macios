@@ -63,6 +63,7 @@ using Mono.Tuner;
 
 using MonoTouch.Tuner;
 using XamCore.Registrar;
+using XamCore.ObjCRuntime;
 
 using Xamarin.Linker;
 using Xamarin.Utils;
@@ -651,6 +652,8 @@ namespace Xamarin.Bundler
 					sw.WriteLine ("\tmono_use_llvm = {0};", enable_llvm ? "TRUE" : "FALSE");
 					sw.WriteLine ("\txamarin_log_level = {0};", verbose);
 					sw.WriteLine ("\txamarin_arch_name = \"{0}\";", abi.AsArchString ());
+					sw.WriteLine ("\txamarin_marshal_managed_exception_mode = MarshalManagedExceptionMode{0};", app.MarshalManagedExceptions);
+					sw.WriteLine ("\txamarin_marshal_objectivec_exception_mode = MarshalObjectiveCExceptionMode{0};", app.MarshalObjectiveCExceptions);
 					if (app.EnableDebug)
 						sw.WriteLine ("\txamarin_debug_mode = TRUE;");
 					if (!string.IsNullOrEmpty (app.MonoGCParams))
@@ -834,6 +837,10 @@ namespace Xamarin.Bundler
 						// framework specific processing
 						switch (framework.Name) {
 						case "CoreAudioKit":
+							// CoreAudioKit seems to be functional in the iOS 9 simulator.
+							if (app.IsSimulatorBuild && SDKVersion.Major < 9)
+								continue;
+							break;
 						case "Metal":
 						case "MetalKit":
 						case "MetalPerformanceShaders":
@@ -902,6 +909,15 @@ namespace Xamarin.Bundler
 
 			if (app.Registrar == RegistrarMode.Static || app.Registrar == RegistrarMode.LegacyStatic || app.Registrar == RegistrarMode.LegacyDynamic)
 				return false;
+
+			// The default exception marshalling differs between release and debug mode, but we
+			// only have one simlauncher, so to use the simlauncher we'd have to chose either
+			// debug or release mode. Debug is more frequent, so make that the fast path.
+			if (!app.EnableDebug)
+				return false;
+
+			if (app.MarshalObjectiveCExceptions != MarshalObjectiveCExceptionMode.UnwindManagedCode)
+				return false; // UnwindManagedCode is the default for debug builds.
 
 			return true;
 		}
@@ -1279,7 +1295,7 @@ namespace Xamarin.Bundler
 			{ "unsupported--enable-generics-in-registrar", "[Deprecated]", v => { enable_generic_nsobject = true; classic_only_arguments.Add ("--unsupported--enable-generics-in-registrar"); }, true },
 			{ "stderr=", "Redirect the standard error for the simulated application to the specified file [DEPRECATED]", v => { }, true },
 			{ "stdout=", "Redirect the standard output for the simulated application to the specified file [DEPRECATED]", v => { }, true },
-			{ "sdkroot=", "Specify the location of Apple SDKs, default to: '/Developer/'", v => sdk_root = v },
+			{ "sdkroot=", "Specify the location of Apple SDKs, default to 'xcode-select' value.", v => sdk_root = v },
 			{ "crashreporting-api-key=", "Specify the Crashlytics API key to use (which will also enable Crashlytics support). [Deprecated].", v =>
 				{
 					throw new MonoTouchException (16, true, "The option '{0}' has been deprecated.", "--crashreporting-api-key");
@@ -1345,6 +1361,8 @@ namespace Xamarin.Bundler
 			{ "tls-provider=", "Specify the default TLS provider", v => { tls_provider = v; }},
 			{ "xamarin-framework-directory=", "The framework directory", v => { mtouch_dir = v; }, true },
 		};
+
+			AddSharedOptions (os);
 
 			try {
 				assemblies = os.Parse (args);
@@ -1515,7 +1533,7 @@ namespace Xamarin.Bundler
 					return path;
 
 				// check inside XS
-				path = "/Applications/Xamarin Studio.app/Contents/MacOS/mlaunch";
+				path = "/Applications/Xamarin Studio.app/Contents/Resources/lib/monodevelop/AddIns/MonoDevelop.IPhone/mlaunch.app/Contents/MacOS/mlaunch";
 				if (File.Exists (path))
 					return path;
 
@@ -1712,25 +1730,6 @@ namespace Xamarin.Bundler
 						return true;
 
 			return false;
-		}
-
-		public static string RunRegistrar (Target target, List<Assembly> assemblies, string assemblies_path, string output_dir, bool old, bool is_64_bits, string out_file = null)
-		{
-			const string registrar_file = "registrar.m";
-
-			var resolvedAssemblies = assemblies.Select (asm => asm.AssemblyDefinition);
-			var output_file = out_file ?? Path.Combine (output_dir, registrar_file);
-			var code = string.Empty;
-
-			if (old) {
-				code = OldStaticRegistrar.Generate (resolvedAssemblies);
-			} else {
-				code = StaticRegistrar.Generate (app, resolvedAssemblies, target.App.IsSimulatorBuild, is_64_bits, target.LinkContext);
-			}
-
-			WriteIfDifferent (output_file, code);
-			
-			return output_file;
 		}
 
 		struct timespec {

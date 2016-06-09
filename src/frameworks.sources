@@ -570,6 +570,11 @@ EVENTKITUI_CORE_SOURCES = \
 EXTERNALACCESSORY_API_SOURCES = \
 	ExternalAccessory/EAEnums.cs \
 
+# FinderSync
+
+FINDERSYNC_CORE_SOURCES = \
+	FinderSync/Enums.cs \
+
 # Foundation
 
 FOUNDATION_CORE_SOURCES = \
@@ -623,6 +628,7 @@ FOUNDATION_SOURCES = \
 	Foundation/NSDirectoryEnumerator.cs \
 	Foundation/NSDistributedNotificationCenter.cs \
 	Foundation/NSErrorException.cs \
+	Foundation/NSExpression.cs \
 	Foundation/NSExtension.cs \
 	Foundation/NSFastEnumerationState.cs \
 	Foundation/NSFastEnumerator.cs \
@@ -1393,6 +1399,8 @@ SHARED_SOURCES = \
 	ObjCRuntime/Dlfcn.cs \
 	ObjCRuntime/DynamicRegistrar.cs \
 	ObjCRuntime/ErrorHelper.cs \
+	ObjCRuntime/Exceptions.cs \
+	ObjCRuntime/ExceptionMode.cs \
 	ObjCRuntime/IDynamicRegistrar.cs \
 	ObjCRuntime/Method.cs \
 	ObjCRuntime/MethodDescription.cs \
@@ -1458,6 +1466,7 @@ MAC_FRAMEWORKS =            \
 	CoreVideo               \
 	CoreWlan                \
 	EventKit                \
+	FinderSync		\
 	GameController          \
 	GameKit                 \
 	GameplayKit             \
@@ -1476,6 +1485,7 @@ MAC_FRAMEWORKS =            \
 	ModelIO                 \
 	MultipeerConnectivity	\
 	NetworkExtension        \
+	NotificationCenter 	\
 	OpenGL                  \
 	PdfKit                  \
 	QTKit                   \

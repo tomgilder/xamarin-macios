@@ -7,6 +7,7 @@ using System.Linq;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 using MonoTouch.Tuner;
 
@@ -219,7 +220,6 @@ namespace Xamarin.Bundler {
 
 			switch (Platform) {
 			case ApplePlatform.iOS:
-				return true;
 			case ApplePlatform.TVOS:
 			case ApplePlatform.WatchOS:
 				return false;
@@ -539,8 +539,11 @@ namespace Xamarin.Bundler {
 				}
 				break;
 			}
-			var registrar = XamCore.Registrar.StaticRegistrar.Generate (this, resolvedAssemblies, simulator: true, single_assembly: Path.GetFileNameWithoutExtension (RootAssembly));
-			Driver.WriteIfDifferent (registrar_m, registrar);
+
+			BuildTarget = BuildTarget.Simulator;
+
+			var registrar = new XamCore.Registrar.StaticRegistrar (this);
+			registrar.GenerateSingleAssembly (resolvedAssemblies, Path.ChangeExtension (registrar_m, "h"), registrar_m, Path.GetFileNameWithoutExtension (RootAssembly));
 		}
 
 		public void Build ()
@@ -739,12 +742,17 @@ namespace Xamarin.Bundler {
 			if (!IsExtension && Platform == ApplePlatform.WatchOS)
 				throw new MonoTouchException (77, true, "WatchOS projects must be extensions.");
 		
+#if ENABLE_BITCODE_ON_IOS
+			if (Platform == ApplePlatform.iOS)
+				DeploymentTarget = new Version (9, 0);
+#endif
+
 			if (DeploymentTarget == null) {
 				DeploymentTarget = Xamarin.SdkVersions.GetVersion (Platform);
 			} else if (DeploymentTarget < Xamarin.SdkVersions.GetMinVersion (Platform)) {
-				throw new MonoTouchException (73, true, "Xamarin.iOS {0} does not support a deployment target of {1} (the minimum is {2}). Please select a newer deployment target in your project's Info.plist.", Constants.Version, DeploymentTarget, Xamarin.SdkVersions.GetMinVersion (Platform));
+				throw new MonoTouchException (73, true, "Xamarin.iOS {0} does not support a deployment target of {1} for {3} (the minimum is {2}). Please select a newer deployment target in your project's Info.plist.", Constants.Version, DeploymentTarget, Xamarin.SdkVersions.GetMinVersion (Platform), PlatformName);
 			} else if (DeploymentTarget > Xamarin.SdkVersions.GetVersion (Platform)) {
-				throw new MonoTouchException (74, true, "Xamarin.iOS {0} does not support a deployment target of {1} (the maximum is {2}). Please select an older deployment target in your project's Info.plist or upgrade to a newer version of Xamarin.iOS.", Constants.Version, DeploymentTarget, Xamarin.SdkVersions.GetVersion (Platform));
+				throw new MonoTouchException (74, true, "Xamarin.iOS {0} does not support a deployment target of {1} for {3} (the maximum is {2}). Please select an older deployment target in your project's Info.plist or upgrade to a newer version of Xamarin.iOS.", Constants.Version, DeploymentTarget, Xamarin.SdkVersions.GetVersion (Platform), PlatformName);
 			}
 
 			if (Platform == ApplePlatform.iOS && FastDev && DeploymentTarget.Major < 7) {
@@ -847,6 +855,25 @@ namespace Xamarin.Bundler {
 
 			Namespaces.Initialize ();
 
+			var hasBitcodeCapableRuntime = false;
+			switch (Platform) {
+			case ApplePlatform.iOS:
+#if ENABLE_BITCODE_ON_IOS
+				hasBitcodeCapableRuntime = true;
+#endif
+				break;
+			case ApplePlatform.TVOS:
+			case ApplePlatform.WatchOS:
+				hasBitcodeCapableRuntime = true;
+				break;
+			}
+			if (hasBitcodeCapableRuntime && EnableProfiling && FastDev) {
+				ErrorHelper.Warning (94, "Both profiling (--profiling) and incremental builds (--fastdev) is not supported when building for {0}. Incremental builds have ben disabled.", PlatformName);
+				FastDev = false;
+			}
+
+			InitializeCommon ();
+
 			Driver.Watch ("Resolve References", 1);
 		}
 		
@@ -876,6 +903,9 @@ namespace Xamarin.Bundler {
 					Registrar = RegistrarMode.LegacyDynamic;
 				}
 			}
+
+			foreach (var target in Targets)
+				target.SelectStaticRegistrar ();
 		}
 
 		// Select all abi from the list matching the specified mask.
@@ -1052,14 +1082,16 @@ namespace Xamarin.Bundler {
 
 				var libprofiler_target = Path.Combine (AppDirectory, "libmono-profiler-log.dylib");
 				var libprofiler_source = Path.Combine (libdir, "libmono-profiler-log.dylib");
-				Application.UpdateFile (libprofiler_source, libprofiler_target);
+				if (EnableProfiling)
+					Application.UpdateFile (libprofiler_source, libprofiler_target);
 
 				// Copy libXamarin.dylib to the app
 				var libxamarin_target = Path.Combine (AppDirectory, LibXamarin);
 				Application.UpdateFile (Path.Combine (Driver.MonoTouchLibDirectory, LibXamarin), libxamarin_target);
 
 				if (UseMonoFramework.Value) {
-					Driver.XcodeRun ("install_name_tool", "-change @executable_path/libmonosgen-2.0.dylib @rpath/Mono.framework/Mono " + Driver.Quote (libprofiler_target));
+					if (EnableProfiling)
+						Driver.XcodeRun ("install_name_tool", "-change @executable_path/libmonosgen-2.0.dylib @rpath/Mono.framework/Mono " + Driver.Quote (libprofiler_target));
 					Driver.XcodeRun ("install_name_tool", "-change @executable_path/libmonosgen-2.0.dylib @rpath/Mono.framework/Mono " + Driver.Quote (libxamarin_target));
 				}
 			}
@@ -1537,6 +1569,24 @@ namespace Xamarin.Bundler {
 		}
 	}
 
+	public class BuildTasks : List<BuildTask>
+	{
+		static void Execute (BuildTask v)
+		{
+			var next = v.Execute ();
+			if (next != null)
+				Parallel.ForEach (next, new ParallelOptions () { MaxDegreeOfParallelism = Environment.ProcessorCount }, Execute);
+		}
+
+		public void ExecuteInParallel ()
+		{
+			if (Count == 0)
+				return;
+			
+			Parallel.ForEach (this, new ParallelOptions () { MaxDegreeOfParallelism = Environment.ProcessorCount }, Execute);
+		}
+	}
+
 	public abstract class BuildTask
 	{
 		public IEnumerable<BuildTask> NextTasks;
@@ -1670,10 +1720,16 @@ namespace Xamarin.Bundler {
 	}
 
 	internal class RegistrarTask : CompileTask {
+		public static void Create (List<BuildTask> tasks, IEnumerable<Abi> abis, Target target, string ifile)
+		{
+			foreach (var abi in abis)
+				Create (tasks, abi, target, ifile);
+		}
+
 		public static void Create (List<BuildTask> tasks, Abi abi, Target target, string ifile)
 		{
 			var arch = abi.AsArchString ();
-			var ofile = Path.Combine (Cache.Location, "registrar." + arch + ".o");
+			var ofile = Path.Combine (Cache.Location, Path.GetFileNameWithoutExtension (ifile) + "." + arch + ".o");
 
 			if (!Application.IsUptodate (ifile, ofile)) {
 				tasks.Add (new RegistrarTask ()

@@ -20,8 +20,8 @@ SHIPPED_HEADERS +=         \
 	xamarin/runtime.h      \
 
 SHARED_SOURCES += mono-runtime.m bindings.m bindings-generated.m shared.m runtime.m trampolines.m trampolines-invoke.m xamarin-support.m nsstring-localization.m trampolines-varargs.m
-SHARED_I386_SOURCES += trampolines-i386.m trampolines-i386-asm.s
-SHARED_X86_64_SOURCES += trampolines-x86_64.m trampolines-x86_64-asm.s
+SHARED_I386_SOURCES += trampolines-i386.m trampolines-i386-asm.s trampolines-i386-objc_msgSend.s trampolines-i386-objc_msgSendSuper.s trampolines-i386-objc_msgSend_stret.s trampolines-i386-objc_msgSendSuper_stret.s
+SHARED_X86_64_SOURCES += trampolines-x86_64.m trampolines-x86_64-asm.s trampolines-x86_64-objc_msgSend.s trampolines-x86_64-objc_msgSendSuper.s trampolines-x86_64-objc_msgSend_stret.s trampolines-x86_64-objc_msgSendSuper_stret.s
 SHARED_HEADERS += shared.h product.h delegates.h runtime-internal.h $(SHARED_INC) $(SHIPPED_HEADERS) trampolines-internal.h slinked-list.h
 
 SHARED_FILES = $(SHARED_SOURCES) $(SHARED_HEADERS) $(SHARED_I386_SOURCES) $(SHARED_X86_64_SOURCES)
@@ -101,27 +101,38 @@ RUNTIME_$(2)_TARGETS_DIRS +=                                        \
 
 RUNTIME_$(2)_TARGETS +=                                                                                \
 	$$(foreach file,$$($(2)_LIBRARIES),$(IOS_DESTDIR)$$(XAMARIN_$(4)SIMULATOR_SDK)/usr/lib/$$(file))   \
-	$$(foreach file,$$($(2)_LIBRARIES),$(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/lib/$$(file))          \
 	$(foreach file,$(SHIPPED_HEADERS),$(IOS_DESTDIR)$$(XAMARIN_$(4)SIMULATOR_SDK)/usr/include/$(file)) \
+
+ifdef INCLUDE_DEVICE
+RUNTIME_$(2)_TARGETS +=                                                                                \
+	$$(foreach file,$$($(2)_LIBRARIES),$(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/lib/$$(file))          \
 	$(foreach file,$(SHIPPED_HEADERS),$(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/include/$(file))        \
+
+endif
 
 $(IOS_DESTDIR)$$(XAMARIN_$(4)SIMULATOR_SDK)/usr/lib/%.a: .libs/$(1)/%.a | $(IOS_DESTDIR)$$(XAMARIN_$(4)SIMULATOR_SDK)/usr/lib
 	$(Q) install -m 0644 $$< $$@
 
+ifdef INCLUDE_DEVICE
 $(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/lib/%.a: .libs/$(1)/%.a | $(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/lib
 	$(Q) install -m 0644 $$< $$@
+endif
 
 $(IOS_DESTDIR)$$(XAMARIN_$(4)SIMULATOR_SDK)/usr/lib/%.dylib: .libs/$(1)/%.dylib | $(IOS_DESTDIR)$$(XAMARIN_$(4)SIMULATOR_SDK)/usr/lib
 	$(Q) install -m 0644 $$< $$@
 
+ifdef INCLUDE_DEVICE
 $(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/lib/%.dylib: .libs/$(1)/%.dylib | $(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/lib
 	$(Q) install -m 0644 $$< $$@
+endif
 
 $(IOS_DESTDIR)$$(XAMARIN_$(4)SIMULATOR_SDK)/usr/include/%.h: %.h | $(IOS_DESTDIR)$$(XAMARIN_$(4)SIMULATOR_SDK)/usr/include/xamarin
 	$(Q) install -m 0644 $$< $$@
 
+ifdef INCLUDE_DEVICE
 $(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/include/%.h: %.h | $(IOS_DESTDIR)$$(XAMARIN_$(5)OS_SDK)/usr/include/xamarin
 	$(Q) install -m 0644 $$< $$@
+endif
 
 $$(RUNTIME_$(2)_TARGETS_DIRS):
 	$(Q) mkdir -p $$@
@@ -138,15 +149,27 @@ endef
 # 4: simulator variable name used in some places
 # 5: device variable name used in some places
 ifdef INCLUDE_IOS
+ifdef INCLUDE_DEVICE
 $(eval $(call PlatformTemplate,ios,IOS,armv7 armv7s arm64 x86 x86_64,IOS,IPHONE))
+else
+$(eval $(call PlatformTemplate,ios,IOS,                   x86 x86_64,IOS,IPHONE))
+endif
 endif
 
 ifdef INCLUDE_WATCH
+ifdef INCLUDE_DEVICE
 $(eval $(call PlatformTemplate,watchos,WATCHOS,armv7k x86,WATCH,WATCH))
+else
+$(eval $(call PlatformTemplate,watchos,WATCHOS,       x86,WATCH,WATCH))
+endif
 endif
 
 ifdef INCLUDE_TVOS
+ifdef INCLUDE_DEVICE
 $(eval $(call PlatformTemplate,tvos,TVOS,arm64 x86_64,TV,TV))
+else
+$(eval $(call PlatformTemplate,tvos,TVOS,      x86_64,TV,TV))
+endif
 endif
 
 #
@@ -290,6 +313,7 @@ ALLOWED_UNDEFINED_SYMBOLS = _xamarin_enable_debug _xammac_setup
 
 MAC_LIBS =                   \
 	XamMacLauncher           \
+	libextension.a			 \
 	libxammac.a              \
 	libxammac-debug.a        \
 	libxammac.dylib          \
@@ -356,6 +380,20 @@ $(eval $(call ObjTemplate,i386,32))
 $(eval $(call ObjTemplate,x86_64,64))
 $(eval $(call ObjTemplate,i386,DEBUG32,-debug,-DDEBUG))
 $(eval $(call ObjTemplate,x86_64,DEBUG64,-debug,-DDEBUG))
+
+$(foreach arch,$(MAC_ARCHITECTURES),.libs/mac/extension-main.$(arch).o): EXTRA_DEFINES=-DEXTENSION
+
+.libs/mac/extension-main.%.o:
+	$(Q) rm -f $@
+	$(call Q_2,CC,  [mac]) $(MAC_CLANG) -c -DEXTENSION extension-main.m -arch $* -o $@
+
+.libs/mac/libextension.%.a: .libs/mac/extension-main.%.o
+	$(Q) rm -f $@
+	$(call Q_2,AR,    [mac]) $(DEVICE_BIN_PATH)/ar cru $@ $^
+
+.libs/mac/libextension.a: $(foreach arch,$(MAC_ARCHITECTURES),.libs/mac/libextension.$(arch).a)
+	$(Q) rm -f $@
+	$(call Q_2,LIPO,  [mac]) $(DEVICE_BIN_PATH)/lipo $^ -create -output $@
 
 .libs/mac/libxammac-debug.dylib: .libs/mac/libxammac-debug.x86_64.dylib .libs/mac/libxammac-debug.i386.dylib
 	$(call Q_2,LIPO,  [mac]) xcrun lipo -create $^ -o $@

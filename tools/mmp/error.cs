@@ -33,6 +33,8 @@ namespace Xamarin.Bundler {
 	//					MM0068	Invalid value for target framework: {0}.
 	//					MM0079	Internal Error - No executable was copied into the app bundle. Please contact 'support@xamarin.com'
 	//			Warning		MT0080  Disabling NewRefCount, --new-refcount:false, is deprecated.
+	//					MM0088	** Reserved mtouch **
+	//					MM0089	** Reserved mtouch **
 	// MM1xxx	file copy / symlinks (project related)
 	//			MM14xx	Product assemblies
 	//					MM1401	The required '{0}' assembly is missing from the references
@@ -94,6 +96,7 @@ namespace Xamarin.Bundler {
 	//					MM5306	Missing dependencies. Please install Xcode 'Command-Line Tools' component
 	//					MM5308  Xcode license agreement may not have been accepted.  Please launch Xcode.
 	//					MM5309	Native linking failed with error code 1.  Check build log for details.
+	//					MT5310  install_name_tool failed with an error code '{0}'. Check build log for details. 
 	// MM6xxx	mmp internal tools
 	// MM7xxx	reserved
 	// MM8xxx	runtime

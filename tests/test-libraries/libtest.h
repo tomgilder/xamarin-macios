@@ -109,6 +109,32 @@ typedef unsigned int (^RegistrarTestBlock) (unsigned int magic);
 	-(RegistrarTestBlock) methodReturningBlock;
 	@property (nonatomic, readonly) RegistrarTestBlock propertyReturningBlock;
 	-(bool) testBlocks;
+
+	-(void) idAsIntPtr: (id)p1;
+@end
+
+/*
+ * ObjC test class used for exception tests.
+ */
+@interface ObjCExceptionTest : NSObject {
+}
+	-(void) throwObjCException;
+	-(void) throwManagedException;
+	-(void) invokeManagedExceptionThrower;
+	-(void) invokeManagedExceptionThrowerAndRethrow;
+	-(void) invokeManagedExceptionThrowerAndCatch;
+@end
+
+@protocol ObjCProtocolTest
+@required
+	-(void) idAsIntPtr: (id)p1;
+@end
+
+// We need this class so that the ObjCProtocolTest protocol
+// actually ends up in the library.
+@interface ObjCProtocolClassTest : NSObject<ObjCProtocolTest> {
+}
+-(void) idAsIntPtr: (id)p1;
 @end
 
 #ifdef __cplusplus

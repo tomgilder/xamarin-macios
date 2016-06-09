@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <Foundation/Foundation.h>
 
+#include "main.h"
 #include "mono-runtime.h"
 
 #ifdef __cplusplus
@@ -120,6 +121,7 @@ const char *	xamarin_skip_encoding_flags (const char *encoding);
 void			xamarin_add_registration_map (struct MTRegistrationMap *map);
 
 bool			xamarin_has_managed_ref (id self);
+bool			xamarin_has_managed_ref_safe (id self);
 void			xamarin_switch_gchandle (id self, bool to_weak);
 int				xamarin_get_gchandle (id self);
 void			xamarin_free_gchandle (id self, int gchandle);
@@ -144,6 +146,9 @@ void			xamarin_set_gc_pump_enabled (bool value);
 
 typedef void  	(*XamarinUnhandledExceptionFunc)         (MonoObject *exc, const char *type_name, const char *message, const char *trace);
 void          	xamarin_install_unhandled_exception_hook (XamarinUnhandledExceptionFunc func);
+void			xamarin_process_nsexception (NSException *exc);
+void			xamarin_process_nsexception_using_mode (NSException *ns_exception, bool throwManagedAsDefault);
+void			xamarin_process_managed_exception (MonoObject *exc);
 
 id				xamarin_invoke_objc_method_implementation (id self, SEL sel, IMP xamarin_impl);
 
@@ -170,7 +175,7 @@ MonoObject*					xamarin_get_selector						(SEL ptr);
 Class						xamarin_get_class_handle					(MonoObject *obj);
 SEL							xamarin_get_selector_handle					(MonoObject *obj);
 MethodDescription			xamarin_get_method_for_selector				(Class cls, SEL sel);
-MonoObject*					xamarin_try_get_nsobject 					(id obj);
+bool						xamarin_has_nsobject 						(id obj);
 MonoObject*					xamarin_get_nsobject 						(id obj);
 id							xamarin_get_handle_for_inativeobject		(MonoObject *obj);
 void						xamarin_unregister_nsobject					(id native_obj, MonoObject *managed_obj);
@@ -206,6 +211,75 @@ public:
 -(int) xamarinGetGCHandle;
 @end
 
+// Coop GC helper API
+#if !TARGET_OS_WATCH
+
+#define MONO_ENTER_GC_UNSAFE
+#define MONO_EXIT_GC_UNSAFE
+#define MONO_ENTER_GC_SAFE
+#define MONO_EXIT_GC_SAFE
+#define MONO_ASSERT_GC_SAFE
+#define MONO_ASSERT_GC_SAFE_OR_DETACHED
+#define MONO_ASSERT_GC_UNSAFE
+#define MONO_ASSERT_GC_STARTING
+
+#else
+
+#define MONO_ENTER_GC_UNSAFE	\
+	do {	\
+		gpointer __dummy;	\
+		gpointer __gc_unsafe_cookie = mono_threads_enter_gc_unsafe_region (&__dummy)	\
+
+#define MONO_EXIT_GC_UNSAFE	\
+		mono_threads_exit_gc_unsafe_region	(__gc_unsafe_cookie, &__dummy);	\
+	} while (0)
+
+#define MONO_ENTER_GC_SAFE	\
+	do {	\
+		gpointer __dummy;	\
+		gpointer __gc_safe_cookie = mono_threads_enter_gc_safe_region (&__dummy)	\
+
+#define MONO_EXIT_GC_SAFE	\
+		mono_threads_exit_gc_safe_region (__gc_safe_cookie, &__dummy);	\
+	} while (0)
+
+//#if DEBUG
+	#define MONO_ASSERT_GC_SAFE      mono_threads_assert_gc_safe_region ()
+	#define MONO_ASSERT_GC_SAFE_OR_DETACHED \
+	do { \
+		if (mono_thread_info_current_unchecked ()) \
+			mono_threads_assert_gc_safe_region (); \
+	} while (0)
+	#define MONO_ASSERT_GC_UNSAFE    mono_threads_assert_gc_unsafe_region ()
+	#define MONO_ASSERT_GC_STARTING
+	// There's no way to assert STARTING, tls values inside mono aren't initialized so mono's API end up accessing random memory, and thus randomly asserting //  mono_threads_assert_gc_starting_region ()
+//#else
+//	#define MONO_ASSERT_GC_SAFE
+//	#define MONO_ASSERT_GC_UNSAFE
+//#endif /* DEBUG */
+
+#endif /* !TARGET_OS_WATCH */
+
+// Once we have one mono clone again the TARGET_OS_WATCH
+// condition should be removed (DYNAMIC_MONO_RUNTIME should still
+// be here though).
+#if TARGET_OS_WATCH && !defined (DYNAMIC_MONO_RUNTIME)
+#define MONO_THREAD_ATTACH \
+	do { \
+		gpointer __thread_dummy; \
+		gpointer __thread_cookie = mono_threads_attach_coop (NULL, &__thread_dummy) \
+
+#define MONO_THREAD_DETACH \
+		mono_threads_detach_coop (__thread_cookie, &__thread_dummy); \
+	} while (0)
+#else
+#define MONO_THREAD_ATTACH \
+	do { \
+		mono_jit_thread_attach (NULL) \
+
+#define MONO_THREAD_DETACH \
+	} while (0)
+#endif
 
 #ifdef __cplusplus
 } /* extern "C" */

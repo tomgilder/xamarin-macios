@@ -185,6 +185,47 @@ static UltimateMachine *shared;
 
 		return true;
 	}
+
+	-(void) idAsIntPtr: (id)p1
+	{
+		// Nothing to do here.
+	}
+@end
+
+@implementation ObjCExceptionTest
+{
+}
+	-(void) throwObjCException
+	{
+		[NSException raise:@"Some exception" format:@"exception was thrown"];
+	}
+
+	-(void) throwManagedException
+	{
+		abort (); // this method should be overridden in managed code.
+	}
+
+	-(void) invokeManagedExceptionThrower
+	{
+		[self throwManagedException];	
+	}
+
+	-(void) invokeManagedExceptionThrowerAndRethrow
+	{
+		@try {
+			[self throwManagedException];			
+		} @catch (id exc) {
+			[NSException raise:@"Caught exception" format:@"exception was rethrown"];
+		}
+	}
+	-(void) invokeManagedExceptionThrowerAndCatch
+	{
+		@try {
+			[self throwManagedException];			
+		} @catch (id exc) {
+			// do nothing
+		}
+	}
 @end
 
 @interface CtorChaining1 : NSObject
@@ -203,5 +244,12 @@ static UltimateMachine *shared;
 {
 	self.initCallsInitCalled = YES;
 	return [self init];
+}
+@end
+
+@implementation ObjCProtocolClassTest
+-(void) idAsIntPtr: (id)p1
+{
+	// Do nothing
 }
 @end

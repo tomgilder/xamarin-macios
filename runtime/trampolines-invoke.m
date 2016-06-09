@@ -21,17 +21,30 @@
 void
 xamarin_invoke_trampoline (enum TrampolineType type, id self, SEL sel, iterator_func iterator, marshal_return_value_func marshal_return_value, void *context)
 {
+	// COOP: No managed data in input, but accesses managed data.
+	// COOP: FIXME: This method needs a lot of work when the runtime team
+	//       implements a handle api for mono objects.
+	//       Random notes:
+	//       * Must switch to SAFE mode when calling any external code.
+	//       * mono_runtime_invoke will have to change, since 'out/ref'
+	//         objects arguments are now put into the arg_ptrs array
+	//         (clearly not GC-safe upon return).
+	MONO_ASSERT_GC_SAFE_OR_DETACHED;
+
+	MonoObject *exception = NULL;
+	MonoObject **exception_ptr = xamarin_marshal_managed_exception_mode == MarshalManagedExceptionModeDisable ? NULL : &exception;
 	bool is_static = (type & Tramp_Static) == Tramp_Static;
 	bool is_ctor = type == Tramp_Ctor;
 
 	if (is_ctor) {
-		void *obj = xamarin_try_get_nsobject (self);
-		if (obj != NULL) {
+		if (xamarin_has_nsobject (self)) {
 			self = xamarin_invoke_objc_method_implementation (self, sel, (IMP) xamarin_ctor_trampoline);
 			marshal_return_value (context, "|", sizeof (id), self, NULL, false, NULL);
 			return;
 		}
 	}
+
+	MONO_THREAD_ATTACH; // COOP: This will swith to GC_UNSAFE
 
 	// pre-prolog
 	SList *dispose_list = NULL;
@@ -225,16 +238,17 @@ xamarin_invoke_trampoline (enum TrampolineType type, id self, SEL sel, iterator_
 				}
 				case _C_ID: {
 					id id_arg = (id) arg;
-					if (!id_arg) {
+					MonoClass *p_klass = mono_class_from_mono_type (p);
+					if (p_klass == mono_get_intptr_class ()) {
+						arg_frame [ofs] = id_arg;
+						arg_ptrs [i + mofs] = &arg_frame [frameofs];
+						LOGZ (" argument %i is IntPtr: %p\n", i + 1, id_arg);
+						break;
+					} else if (!id_arg) {
 						arg_ptrs [i + mofs] = NULL;
 						break;
 					} else {
-						MonoClass *p_klass = mono_class_from_mono_type (p);
-						if (p_klass == mono_get_intptr_class ()) {
-							arg_frame [ofs] = id_arg;
-							arg_ptrs [i + mofs] = &arg_frame [frameofs];
-							LOGZ (" argument %i is IntPtr: %p\n", i + 1, id_arg);
-						} else if (p_klass == mono_get_string_class ()) {
+						if (p_klass == mono_get_string_class ()) {
 							NSString *str = (NSString *) id_arg;
 							arg_ptrs [i + mofs] = mono_string_new (mono_domain_get (), [str UTF8String]);
 							LOGZ (" argument %i is NSString: %p = %s\n", i + 1, id_arg, [str UTF8String]);
@@ -353,7 +367,7 @@ xamarin_invoke_trampoline (enum TrampolineType type, id self, SEL sel, iterator_
 
 		xamarin_set_nsobject_handle (retval, self);
 		xamarin_set_nsobject_flags (retval, NSObjectFlagsNativeRef);
-		mono_runtime_invoke (method, retval, (void **) arg_ptrs, NULL);
+		mono_runtime_invoke (method, retval, (void **) arg_ptrs, exception_ptr);
 		xamarin_create_managed_ref (self, retval, true);
 
 		xamarin_register_nsobject (retval, self);
@@ -366,7 +380,7 @@ xamarin_invoke_trampoline (enum TrampolineType type, id self, SEL sel, iterator_
 		fprintf (stderr, "\n");
 #endif
 
-		retval = mono_runtime_invoke (method, mthis, (void **) arg_ptrs, NULL);
+		retval = mono_runtime_invoke (method, mthis, (void **) arg_ptrs, exception_ptr);
 
 #ifdef TRACE
 		fprintf (stderr, " called managed method with %i arguments: ", num_arg);
@@ -451,4 +465,8 @@ xamarin_invoke_trampoline (enum TrampolineType type, id self, SEL sel, iterator_
 	} else if (*ret_type != 'v') {
 		marshal_return_value (context, ret_type, [sig methodReturnLength], retval, mono_signature_get_return_type (msig), (desc.semantic & ArgumentSemanticRetainReturnValue) != 0, method);
 	}
+
+	xamarin_process_managed_exception (exception);
+
+	MONO_THREAD_DETACH; // COOP: This will switch to GC_SAFE
 }

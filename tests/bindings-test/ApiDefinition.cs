@@ -202,6 +202,28 @@ namespace Bindings.Test {
 
 		[Export ("testBlocks")]
 		bool TestBlocks ();
+
+		[Export ("idAsIntPtr:")]
+		void IdAsIntPtr (IntPtr id);
+
+	}
+
+	[BaseType (typeof (NSObject))]
+	interface ObjCExceptionTest {
+		[Export ("throwObjCException")]
+		void ThrowObjCException ();
+
+		[Export ("throwManagedException")]
+		void ThrowManagedException ();
+
+		[Export ("invokeManagedExceptionThrower")] 
+		void InvokeManagedExceptionThrower ();
+
+		[Export ("invokeManagedExceptionThrowerAndRethrow")] 
+		void InvokeManagedExceptionThrowerAndRethrow ();
+
+		[Export ("invokeManagedExceptionThrowerAndCatch")]
+		void InvokeManagedExceptionThrowerAndCatch ();	
 	}
 
 	[BaseType (typeof (NSObject))]
@@ -215,6 +237,15 @@ namespace Bindings.Test {
 
 		[Export ("initCallsInit:")]
 		IntPtr Constructor (int value);
+	}
+
+	[BaseType (typeof (NSObject))]
+	[Model]
+	[Protocol]
+	interface ObjCProtocolTest
+	{
+		[Export ("idAsIntPtr:")]
+		void IdAsIntPtr (IntPtr p1);
 	}
 }
 

@@ -25,5 +25,21 @@
 #endif
 
 void *xamarin_marshal_return_value (MonoType *mtype, const char *type, MonoObject *retval, bool retain, MonoMethod *method);
+MonoAssembly * xamarin_open_assembly (const char *name);
+
+/*
+ * XamarinGCHandle
+ *
+ * This is an ObjC type that ties the lifetime of a GCHandle to the lifetime of itself.
+ * It stores a GCHandle, and frees the GCHandle in dealloc.
+ */
+@interface XamarinGCHandle : NSObject {
+@public
+	int handle;
+}
++(XamarinGCHandle *) createWithHandle: (int) handle;
+-(void) dealloc;
+-(int) getHandle;
+@end
 
 #endif /* __RUNTIME_INTERNAL_H__ */
