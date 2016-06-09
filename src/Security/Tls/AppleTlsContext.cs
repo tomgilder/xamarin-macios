@@ -24,6 +24,7 @@ using System.Security.Cryptography.X509Certificates;
 using SD = System.Diagnostics;
 using MX = Mono.Security.X509;
 using Mono.Security.Interface;
+using Mono.Net.Security;
 
 using XamCore.Security;
 using XamCore.Foundation;
@@ -32,7 +33,7 @@ using XamCore.ObjCRuntime;
 
 namespace XamCore.Security.Tls
 {
-	class AppleTlsContext : IDisposable
+	class AppleTlsContext : MobileTlsContext
 	{
 		GCHandle handle;
 		IntPtr context;
@@ -40,9 +41,6 @@ namespace XamCore.Security.Tls
 		SslReadFunc readFunc;
 		SslWriteFunc writeFunc;
 
-		readonly MonoTlsSettings settings;
-		readonly AppleTlsProvider provider;
-		readonly MobileAuthenticatedStream parent;
 		readonly bool serverMode;
 		readonly string targetHost;
 		readonly SSA.SslProtocols enabledProtocols;
@@ -70,14 +68,11 @@ namespace XamCore.Security.Tls
 		Exception lastException;
 
 		public AppleTlsContext (
-			MobileAuthenticatedStream parent, MonoTlsSettings settings,
-			AppleTlsProvider provider, bool serverMode, string targetHost,
+			MobileAuthenticatedStream parent, bool serverMode, string targetHost,
 			SSA.SslProtocols enabledProtocols, X509Certificate serverCertificate,
 			X509CertificateCollection clientCertificates, bool askForClientCert)
+			: base (parent)
 		{
-			this.parent = parent;
-			this.settings = settings;
-			this.provider = provider;
 			this.serverMode = serverMode;
 			this.targetHost = targetHost;
 			this.enabledProtocols = enabledProtocols;
@@ -90,7 +85,7 @@ namespace XamCore.Security.Tls
 			readFunc = NativeReadCallback;
 			writeFunc = NativeWriteCallback;
 
-			certificateValidator = CertificateValidationHelper.GetDefaultValidator (settings, provider);
+			certificateValidator = CertificateValidationHelper.GetDefaultValidator (Settings, Provider);
 
 			if (IsServer) {
 				if (serverCertificate == null)
@@ -106,30 +101,18 @@ namespace XamCore.Security.Tls
 			}
 		}
 
-		internal MobileAuthenticatedStream AuthenticatedStream {
-			get { return parent; }
-		}
-
-		public bool IsServer {
+		public override bool IsServer {
 			get { return serverMode; }
 		}
 
-		public bool HasContext {
+		public override bool HasContext {
 			get { return !disposed && context != IntPtr.Zero; }
-		}
-
-		public MonoTlsSettings Settings {
-			get { return settings; }
-		}
-
-		public AppleTlsProvider Provider {
-			get { return provider; }
 		}
 
 		[SD.Conditional ("MARTIN_DEBUG")]
 		protected void Debug (string message, params object[] args)
 		{
-			Console.Error.WriteLine ("MobileTlsStream({0}): {1}", parent.ID, string.Format (message, args));
+			Console.Error.WriteLine ("MobileTlsStream({0}): {1}", Parent.ID, string.Format (message, args));
 		}
 
 		void CheckStatusAndThrow (SslStatus status, params SslStatus[] acceptable)
@@ -189,11 +172,11 @@ namespace XamCore.Security.Tls
 
 		#region Handshake
 
-		public bool IsAuthenticated {
+		public override bool IsAuthenticated {
 			get { return isAuthenticated; }
 		}
 
-		public void StartHandshake ()
+		public override void StartHandshake ()
 		{
 			Debug ("StartHandshake: {0}", IsServer);
 
@@ -214,18 +197,18 @@ namespace XamCore.Security.Tls
 			}
 		}
 
-		public void FinishHandshake ()
+		public override void FinishHandshake ()
 		{
 			InitializeSession ();
 
 			isAuthenticated = true;
 		}
 
-		public void Flush ()
+		public override void Flush ()
 		{
 		}
 
-		public bool ProcessHandshake ()
+		public override bool ProcessHandshake ()
 		{
 			SslStatus status;
 
@@ -378,27 +361,27 @@ namespace XamCore.Security.Tls
 			}
 		}
 
-		public MonoTlsConnectionInfo ConnectionInfo {
+		public override MonoTlsConnectionInfo ConnectionInfo {
 			get { return connectionInfo; }
 		}
 
-		internal bool IsRemoteCertificateAvailable {
+		internal override bool IsRemoteCertificateAvailable {
 			get { return remoteCertificate != null; }
 		}
 
-		internal X509Certificate LocalServerCertificate {
+		internal override X509Certificate LocalServerCertificate {
 			get { return serverCertificate; }
 		}
 
-		internal X509Certificate LocalClientCertificate {
+		internal override X509Certificate LocalClientCertificate {
 			get { return localClientCertificate; }
 		}
 
-		public X509Certificate RemoteCertificate {
+		public override X509Certificate RemoteCertificate {
 			get { return remoteCertificate; }
 		}
 
-		public TlsProtocols NegotiatedProtocol {
+		public override TlsProtocols NegotiatedProtocol {
 			get { return connectionInfo.ProtocolVersion; }
 		}
 
@@ -764,7 +747,7 @@ namespace XamCore.Security.Tls
 
 		SslStatus NativeReadCallback (IntPtr data, ref nint dataLength)
 		{
-			if (closed || disposed || parent == null)
+			if (closed || disposed || Parent == null)
 				return SslStatus.ClosedAbort;
 
 			var len = (int)dataLength;
@@ -773,7 +756,7 @@ namespace XamCore.Security.Tls
 			Debug ("NativeReadCallback: {0} {1}", dataLength, len);
 
 			bool wantMore;
-			var ret = parent.InternalRead (readBuffer, 0, len, out wantMore);
+			var ret = Parent.InternalRead (readBuffer, 0, len, out wantMore);
 			dataLength = ret;
 
 			Debug ("NativeReadCallback #1: {0} - {1} {2}", len, ret, wantMore);
@@ -797,7 +780,7 @@ namespace XamCore.Security.Tls
 
 		SslStatus NativeWriteCallback (IntPtr data, ref nint dataLength)
 		{
-			if (closed || disposed || parent == null)
+			if (closed || disposed || Parent == null)
 				return SslStatus.ClosedAbort;
 
 			var len = (int)dataLength;
@@ -807,7 +790,7 @@ namespace XamCore.Security.Tls
 
 			Debug ("NativeWriteCallback: {0}", len);
 
-			var ok = parent.InternalWrite (writeBuffer, 0, len);
+			var ok = Parent.InternalWrite (writeBuffer, 0, len);
 
 			Debug ("NativeWriteCallback done: {0} {1}", len, ok);
 
@@ -817,7 +800,7 @@ namespace XamCore.Security.Tls
 		[DllImport (Constants.SecurityLibrary)]
 		extern unsafe static /* OSStatus */ SslStatus SSLRead (/* SSLContextRef */ IntPtr context, /* const void* */ byte* data, /* size_t */ nint dataLength, /* size_t* */ out nint processed);
 
-		public unsafe int Read (byte[] buffer, int offset, int count, out bool wantMore)
+		public override unsafe int Read (byte[] buffer, int offset, int count, out bool wantMore)
 		{
 			if (Interlocked.Exchange (ref pendingIO, 1) == 1)
 				throw new InvalidOperationException ();
@@ -859,7 +842,7 @@ namespace XamCore.Security.Tls
 		[DllImport (Constants.SecurityLibrary)]
 		extern unsafe static /* OSStatus */ SslStatus SSLWrite (/* SSLContextRef */ IntPtr context, /* const void* */ byte* data, /* size_t */ nint dataLength, /* size_t* */ out nint processed);
 
-		public unsafe int Write (byte[] buffer, int offset, int count, out bool wantMore)
+		public override unsafe int Write (byte[] buffer, int offset, int count, out bool wantMore)
 		{
 			if (Interlocked.Exchange (ref pendingIO, 1) == 1)
 				throw new InvalidOperationException ();
@@ -889,7 +872,7 @@ namespace XamCore.Security.Tls
 		[DllImport (Constants.SecurityLibrary)]
 		extern static /* OSStatus */ SslStatus SSLClose (/* SSLContextRef */ IntPtr context);
 
-		public void Close ()
+		public override void Close ()
 		{
 			if (Interlocked.Exchange (ref pendingIO, 1) == 1)
 				throw new InvalidOperationException ();
@@ -911,12 +894,13 @@ namespace XamCore.Security.Tls
 			}
 		}
 
-		protected void Dispose (bool disposing)
-		{
-			if (disposed)
-				return;
+		#endregion
 
+		protected override void Dispose (bool disposing)
+		{
 			try {
+				if (disposed)
+					return;
 				if (disposing) {
 					disposed = true;
 					if (serverIdentity != null) {
@@ -938,21 +922,9 @@ namespace XamCore.Security.Tls
 					CFObject.CFRelease (context);
 					context = IntPtr.Zero;
 				}
+				base.Dispose (disposing);
 			}
 		}
-
-		public void Dispose ()
-		{
-			Dispose (true);
-			GC.SuppressFinalize (this);
-		}
-
-		~AppleTlsContext ()
-		{
-			Dispose (false);
-		}
-
-		#endregion
 	}
 }
 #endif
