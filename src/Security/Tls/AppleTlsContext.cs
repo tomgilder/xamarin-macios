@@ -41,12 +41,6 @@ namespace XamCore.Security.Tls
 		SslReadFunc readFunc;
 		SslWriteFunc writeFunc;
 
-		readonly bool serverMode;
-		readonly string targetHost;
-		readonly SSA.SslProtocols enabledProtocols;
-		readonly bool askForClientCert;
-
-		readonly X509Certificate serverCertificate;
 		readonly X509CertificateCollection clientCertificates;
 		readonly ICertificateValidator2 certificateValidator;
 
@@ -71,15 +65,9 @@ namespace XamCore.Security.Tls
 			MobileAuthenticatedStream parent, bool serverMode, string targetHost,
 			SSA.SslProtocols enabledProtocols, X509Certificate serverCertificate,
 			X509CertificateCollection clientCertificates, bool askForClientCert)
-			: base (parent)
+			: base (parent, serverMode, targetHost, enabledProtocols,
+				serverCertificate, clientCertificates, askForClientCert)
 		{
-			this.serverMode = serverMode;
-			this.targetHost = targetHost;
-			this.enabledProtocols = enabledProtocols;
-			this.serverCertificate = serverCertificate;
-			this.clientCertificates = clientCertificates;
-			this.askForClientCert = askForClientCert;
-
 			handle = GCHandle.Alloc (this);
 			connectionId = GCHandle.ToIntPtr (handle);
 			readFunc = NativeReadCallback;
@@ -99,10 +87,6 @@ namespace XamCore.Security.Tls
 					throw new ObjectDisposedException ("AppleTlsContext");
 				return context;
 			}
-		}
-
-		public override bool IsServer {
-			get { return serverMode; }
 		}
 
 		public override bool HasContext {
@@ -190,7 +174,7 @@ namespace XamCore.Security.Tls
 			SetSessionOption (SslSessionOption.BreakOnServerAuth, true);
 
 			if (IsServer) {
-				serverIdentity = MobileCertificateHelper.GetIdentity (serverCertificate);
+				serverIdentity = MobileCertificateHelper.GetIdentity (LocalServerCertificate);
 				if (serverIdentity == null)
 					throw new SSA.AuthenticationException ("Unable to get server certificate from keychain.");
 				SetCertificate (serverIdentity, new SecCertificate [0]);
@@ -225,7 +209,7 @@ namespace XamCore.Security.Tls
 					RequirePeerTrust ();
 					if (remoteCertificate == null)
 						throw new TlsException (AlertDescription.InternalError, "Cannot request client certificate before receiving one from the server.");
-					localClientCertificate = MobileCertificateHelper.SelectClientCertificate (targetHost, certificateValidator, clientCertificates, remoteCertificate);
+					localClientCertificate = MobileCertificateHelper.SelectClientCertificate (TargetHost, certificateValidator, clientCertificates, remoteCertificate);
 					if (localClientCertificate == null)
 						continue;
 					clientIdentity = MobileCertificateHelper.GetIdentity (localClientCertificate);
@@ -269,7 +253,7 @@ namespace XamCore.Security.Tls
 
 			if (trust == null || trust.Count == 0) {
 				remoteCertificate = null;
-				if (!serverMode)
+				if (!IsServer)
 					throw new TlsException (AlertDescription.CertificateUnknown);
 				certificates = null;
 			} else {
@@ -286,7 +270,7 @@ namespace XamCore.Security.Tls
 
 			bool ok;
 			try {
-				ok = MobileCertificateHelper.Validate (targetHost, IsServer, certificateValidator, certificates);
+				ok = MobileCertificateHelper.Validate (TargetHost, IsServer, certificateValidator, certificates);
 			} catch (Exception ex) {
 				Debug ("Certificate validation failed: {0}", ex);
 				throw new TlsException (AlertDescription.CertificateUnknown, "Certificate validation threw exception.");
@@ -298,7 +282,7 @@ namespace XamCore.Security.Tls
 
 		void InitializeConnection ()
 		{
-			context = SSLCreateContext (IntPtr.Zero, serverMode ? SslProtocolSide.Server : SslProtocolSide.Client, SslConnectionType.Stream);
+			context = SSLCreateContext (IntPtr.Zero, IsServer ? SslProtocolSide.Server : SslProtocolSide.Client, SslConnectionType.Stream);
 
 			var result = SSLSetIOFuncs (Handle, readFunc, writeFunc);
 			CheckStatusAndThrow (result);
@@ -306,16 +290,16 @@ namespace XamCore.Security.Tls
 			result = SSLSetConnection (Handle, connectionId);
 			CheckStatusAndThrow (result);
 
-			if ((enabledProtocols & SSA.SslProtocols.Tls) != 0)
+			if ((EnabledProtocols & SSA.SslProtocols.Tls) != 0)
 				MinProtocol = SslProtocol.Tls_1_0;
-			else if ((enabledProtocols & SSA.SslProtocols.Tls11) != 0)
+			else if ((EnabledProtocols & SSA.SslProtocols.Tls11) != 0)
 				MinProtocol = SslProtocol.Tls_1_1;
 			else
 				MinProtocol = SslProtocol.Tls_1_2;
 
-			if ((enabledProtocols & SSA.SslProtocols.Tls12) != 0)
+			if ((EnabledProtocols & SSA.SslProtocols.Tls12) != 0)
 				MaxProtocol = SslProtocol.Tls_1_2;
-			else if ((enabledProtocols & SSA.SslProtocols.Tls11) != 0)
+			else if ((EnabledProtocols & SSA.SslProtocols.Tls11) != 0)
 				MaxProtocol = SslProtocol.Tls_1_1;
 			else
 				MaxProtocol = SslProtocol.Tls_1_0;
@@ -328,7 +312,7 @@ namespace XamCore.Security.Tls
 				SetEnabledCiphers (ciphers);
 			}
 
-			if (askForClientCert)
+			if (AskForClientCertificate)
 				SetClientSideAuthenticate (SslAuthenticate.Try);
 		}
 
@@ -367,10 +351,6 @@ namespace XamCore.Security.Tls
 
 		internal override bool IsRemoteCertificateAvailable {
 			get { return remoteCertificate != null; }
-		}
-
-		internal override X509Certificate LocalServerCertificate {
-			get { return serverCertificate; }
 		}
 
 		internal override X509Certificate LocalClientCertificate {
