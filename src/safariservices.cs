@@ -178,9 +178,11 @@ namespace XamCore.SafariServices {
 	interface SFSafariPageProperties
 	{
 		[Export ("url")]
+		[NullAllowed]
 		NSUrl Url { get; }
 
 		[Export ("title")]
+		[NullAllowed]
 		string Title { get; }
 
 		[Export ("usesPrivateBrowsing")]

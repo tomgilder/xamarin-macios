@@ -394,6 +394,10 @@ namespace XamCore.MediaLibrary {
 
 		[Field ("MLFinalCutFolderGroupTypeIdentifier")]
 		NSString FinalCutFolderGroupTypeIdentifier { get; }
+
+		[Mac (10,12,1, onlyOn64 : true)]
+		[Field ("MLPhotosDepthEffectGroupTypeIdentifier")]
+		NSString PhotosDepthEffectGroupTypeIdentifier { get; }
 	}
 
 	[Mac (10,9, onlyOn64 : true)]
