@@ -88,7 +88,6 @@
     <Compile Include="Tasks\GetNativeExecutableNameTaskBase.cs" />
     <Compile Include="Tasks\GetPropertyListValueTaskBase.cs" />
     <Compile Include="Tasks\IBToolTaskBase.cs" />
-    <Compile Include="Tasks\LoadCodesignStateTaskBase.cs" />
     <Compile Include="Tasks\MetalLibTaskBase.cs" />
     <Compile Include="Tasks\MetalTaskBase.cs" />
     <Compile Include="Tasks\OptimizePropertyListTaskBase.cs" />
@@ -98,7 +97,6 @@
     <Compile Include="Tasks\ScnToolTaskBase.cs" />
     <Compile Include="Tasks\ReadItemsFromFileBase.cs" />
     <Compile Include="Tasks\WriteItemsToFileBase.cs" />
-    <Compile Include="Tasks\SaveCodesignStateTaskBase.cs" />
     <Compile Include="Tasks\SmartCopyTaskBase.cs" />
     <Compile Include="Tasks\SpotlightIndexerTaskBase.cs" />
     <Compile Include="Tasks\SymbolStripTaskBase.cs" />
