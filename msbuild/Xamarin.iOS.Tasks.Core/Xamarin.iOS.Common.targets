@@ -27,9 +27,11 @@ Copyright (C) 2013-2016 Xamarin. All rights reserved.
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.GenerateBundleName" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.GetNativeExecutableName" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.GetPropertyListValue" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
+	<UsingTask TaskName="Xamarin.MacDev.Tasks.LoadCodesignState" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.PackLibraryResources" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.PropertyListEditor" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.ReadItemsFromFile" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
+	<UsingTask TaskName="Xamarin.MacDev.Tasks.SaveCodesignState" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.SmartCopy" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.SpotlightIndexer" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
 	<UsingTask TaskName="Xamarin.MacDev.Tasks.SymbolStrip" AssemblyFile="Xamarin.MacDev.Tasks.dll" />
@@ -302,11 +304,13 @@ Copyright (C) 2013-2016 Xamarin. All rights reserved.
 			_EmbedMobileProvision;
 			_CodesignNativeLibraries;
 			_CodesignFrameworks;
+			_CodesignAppExtensions;
 		</_CodesignAppBundleDependsOn>
 
 		<_CoreCodesignDependsOn>
 			_CodesignNativeLibraries;
 			_CodesignFrameworks;
+			_CodesignAppExtensions;
 			_CodesignAppBundle;
 			_CodesignVerify;
 		</_CoreCodesignDependsOn>
@@ -1530,7 +1534,7 @@ Copyright (C) 2013-2016 Xamarin. All rights reserved.
 	<!-- Note: Always codesign *.dylibs even for Simulator builds. We use $(_CanOutputAppBundle) because dylibs can exist in app extensions as well. -->
 	<Target Name="_CodesignNativeLibraries" Condition="'$(_CanOutputAppBundle)' == 'true'" DependsOnTargets="_DetectSigningIdentity">
 		<Codesign
-			Condition="'$(IsMacEnabled)' == 'true' And '@(_NativeLibrary)' != '' And '$(_CodeSigningKey)' != ''"
+			Condition="'$(IsMacEnabled)' == 'true' And '@(_NativeLibrary)' != '' And '$(_CodeSigningKey)' != '' And '$(IsAppExtension)' == 'false'"
 			SessionId="$(BuildSessionId)"
 			ToolExe="$(CodesignExe)"
 			ToolPath="$(CodesignPath)"
@@ -1546,7 +1550,7 @@ Copyright (C) 2013-2016 Xamarin. All rights reserved.
 
 	<Target Name="_CodesignFrameworks" Condition="'$(_CanOutputAppBundle)' == 'true'" DependsOnTargets="_DetectSigningIdentity;_CollectFrameworks">
 		<Codesign
-			Condition="'$(IsMacEnabled)' == 'true' And '@(_Frameworks)' != '' And '$(_CodeSigningKey)' != ''"
+			Condition="'$(IsMacEnabled)' == 'true' And '@(_Frameworks)' != '' And '$(_CodeSigningKey)' != '' And '$(IsAppExtension)' == 'false'"
 			SessionId="$(BuildSessionId)"
 			ToolExe="$(CodesignExe)"
 			ToolPath="$(CodesignPath)"
@@ -1560,10 +1564,37 @@ Copyright (C) 2013-2016 Xamarin. All rights reserved.
 		</Codesign>
 	</Target>
 
+	<Target Name="_CodesignAppExtensions" Condition="'$(_RequireCodeSigning)' == 'true' And ('$(OutputType)' == 'Exe' Or '$(IsWatchApp)' == 'true')" DependsOnTargets="_DetectSigningIdentity;_CopyAppExtensionsToBundle">
+		<LoadCodesignState
+			SessionId="$(BuildSessionId)"
+			Condition="'$(IsMacEnabled)' == 'true' And '$(IsAppExtension)' == 'false' And '@(_ResolvedAppExtensionReferences)' != '' And Exists('%(_ResolvedAppExtensionReferences.FullPath)\..\codesign.plist')"
+			AppBundleDir="$(_AppBundlePath)PlugIns\%(_ResolvedAppExtensionReferences.FileName)%(_ResolvedAppExtensionReferences.Extension)"
+			SavedState="%(_ResolvedAppExtensionReferences.FullPath)\..\codesign.plist"
+			>
+			<Output TaskParameter="LoadedItem" Item="_AppExtensionWithCodesignProperties" />
+		</LoadCodesignState>
+
+		<Codesign
+			SessionId="$(BuildSessionId)"
+			Condition="'$(IsMacEnabled)' == 'true' And '$(IsAppExtension)' == 'false' And '@(_AppExtensionWithCodesignProperties)' != ''"
+			ToolExe="$(CodesignExe)"
+			ToolPath="$(CodesignPath)"
+			CodesignAllocate="%(_AppExtensionWithCodesignProperties.CodesignAllocate)"
+			DisableTimestamp="%(_AppExtensionWithCodesignProperties.DisableTimestamp)"
+			Keychain="%(_AppExtensionWithCodesignProperties.Keychain)"
+			Entitlements="%(_AppExtensionWithCodesignProperties.Entitlements)"
+			ResourceRules="%(_AppExtensionWithCodesignProperties.ResourceRules)"
+			Resource="%(_AppExtensionWithCodesignProperties.Identity)"
+			SigningKey="%(_AppExtensionWithCodesignProperties.SigningKey)"
+			ExtraArgs="%(_AppExtensionWithCodesignProperties.ExtraArgs)"
+			>
+		</Codesign>
+	</Target>
+
 	<Target Name="_CodesignAppBundle" Condition="'$(_RequireCodeSigning)' == 'true'" DependsOnTargets="$(_CodesignAppBundleDependsOn)">
 		<Codesign
 			SessionId="$(BuildSessionId)"
-			Condition="'$(IsMacEnabled)' == 'true'"
+			Condition="'$(IsMacEnabled)' == 'true' And '$(IsAppExtension)' == 'false'"
 			ToolExe="$(CodesignExe)"
 			ToolPath="$(CodesignPath)"
 			CodesignAllocate="$(_CodesignAllocate)"
@@ -1577,6 +1608,22 @@ Copyright (C) 2013-2016 Xamarin. All rights reserved.
 			>
 		</Codesign>
 
+		<Delete Condition="'$(IsMacEnabled)' == 'true' And '$(IsAppExtension)' == 'true' And Exists('$(AppBundleDir)\..\codesign.plist')" SessionId="$(BuildSessionId)" Files="$(AppBundleDir)\..\codesign.plist" />
+
+		<SaveCodesignState
+			Condition="'$(IsMacEnabled)' == 'true' And '$(IsAppExtension)' == 'true'"
+			SessionId="$(BuildSessionId)"
+			CodesignAllocate="$(_CodesignAllocate)"
+			DisableTimestamp="$(_SdkIsSimulator)"
+			Keychain="$(CodesignKeychain)"
+			Entitlements="$(DeviceSpecificIntermediateOutputPath)Entitlements.xcent"
+			ResourceRules="$(_PreparedResourceRules)"
+			SigningKey="$(_CodeSigningKey)"
+			ExtraArgs="$(CodesignExtraArgs)"
+			SavedState="$(AppBundleDir)\..\codesign.plist"
+			>
+		</SaveCodesignState>
+
 		<Touch
 			SessionId="$(BuildSessionId)"
 			Condition="'$(IsMacEnabled)' == 'true' And '$(_RequireCodeSigning)' == 'true' And Exists ('$(AppBundleDir).dSYM\Contents\Info.plist')"
@@ -1584,7 +1631,7 @@ Copyright (C) 2013-2016 Xamarin. All rights reserved.
 		/>
 	</Target>
 
-	<Target Name="_CodesignVerify" Condition="'$(_RequireCodeSigning)' == 'true'" DependsOnTargets="_CodesignAppBundle">
+	<Target Name="_CodesignVerify" Condition="'$(_RequireCodeSigning)' == 'true' And '$(IsAppExtension)' == 'false'" DependsOnTargets="_CodesignAppBundle">
 		<CodesignVerify
 			SessionId="$(BuildSessionId)"
 			Condition="'$(IsMacEnabled)' == 'true'"

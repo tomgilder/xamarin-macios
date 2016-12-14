@@ -76,8 +76,10 @@
     <Compile Include="Tasks\GenerateBundleName.cs" />
     <Compile Include="Tasks\GetNativeExecutableName.cs" />
     <Compile Include="Tasks\GetPropertyListValue.cs" />
+    <Compile Include="Tasks\LoadCodesignState.cs" />
     <Compile Include="Tasks\PackLibraryResources.cs" />
     <Compile Include="Tasks\PropertyListEditor.cs" />
+    <Compile Include="Tasks\SaveCodesignState.cs" />
     <Compile Include="Tasks\SmartCopy.cs" />
     <Compile Include="Tasks\SpotlightIndexer.cs" />
     <Compile Include="Tasks\SymbolStrip.cs" />
