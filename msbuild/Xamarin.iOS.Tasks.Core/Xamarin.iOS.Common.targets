@@ -1594,15 +1594,26 @@ Copyright (C) 2013-2016 Xamarin. All rights reserved.
 
 	<Target Name="_PrepareCodesignAppBundle" Condition="'$(_RequireCodeSigning)' == 'true' And '$(IsAppExtension)' == 'true'">
 		<!-- For App Extensions, we delay running codesign until it has been copied into the main app bundle... -->
-		<CreateItem Include="$(AppBundleDir)" AdditionalMetadata="CodesignAllocate=$(_CodesignAllocate);
+
+		<PropertyGroup>
+			<_AppBundleFileName>$([System.IO.Path]::GetFileName('$(AppBundleDir)'))</_AppBundleFileName>
+
+			<_EntitlementsFullPath>$([System.IO.Path]::GetFullPath('$(DeviceSpecificIntermediateOutputPath)Entitlements.xcent'))</_EntitlementsFullPath>
+
+			<_ResourceRulesFullPath></_ResourceRulesFullPath>
+			<_ResourceRulesFullPath Condition="'$(_PreparedResourceRules)' != ''">$([System.IO.Path]::GetFullPath('$(_PreparedResourceRules)'))</_ResourceRulesFullPath>
+		</PropertyGroup>
+
+		<CreateItem Include="$(_AppBundleFileName)" AdditionalMetadata="CodesignAllocate=$(_CodesignAllocate);
 					DisableTimestamp=$(_SdkIsSimulator);
 					Keychain=$(CodesignKeychain);
-					Entitlements=$(DeviceSpecificIntermediateOutputPath)Entitlements.xcent;
-					ResourceRules=$(_PreparedResourceRules);
+					Entitlements=$(_EntitlementsFullPath);
+					ResourceRules=$(_ResourceRulesFullPath);
 					SigningKey=$(_CodeSigningKey);
 					ExtraArgs=$(CodesignExtraArgs)">
 			<Output TaskParameter="Include" ItemName="_AppExtensionCodesignProperties" />
 		</CreateItem>
+
 		<WriteItemsToFile
 			Condition="'$(IsMacEnabled)' == 'true'"
 			Items="@(_AppExtensionCodesignProperties)"
